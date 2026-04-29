@@ -30,11 +30,12 @@ https://arxiv.org/abs/1802.03997
 2. Open a terminal & navigate to the cloned repository
 3. Create and activate virtual environment with the following commands:  
 ```python -m venv venv```  
-```env\Scripts\activate```
+```venv\Scripts\activate```
 4. Run the following command to install necessary libraries (May take some time):  
 ```pip install streamlit pandas networkx plotly```
 5. In the terminal, run the dashboard with the command:  
 ```streamlit run dashboard.py```
+6. A tab on your browser should open automatically. If not, in a browser, navigate to the "Local URL" link in the terminal. 
 
 ### Mac
 1. Clone this repo
@@ -46,3 +47,4 @@ https://arxiv.org/abs/1802.03997
 ```pip install streamlit pandas networkx plotly```
 5. In the terminal, run the dashboard with the command:  
 ```streamlit run dashboard.py```
+6. A tab on your browser should open automatically. If not, in a browser, navigate to the "Local URL" link in the terminal. 
