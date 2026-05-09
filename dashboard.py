@@ -133,10 +133,10 @@ st.markdown(
     "Questions we asked were how do clustering, centrality, and community fragmentation differ across categories, and are political pages more polarized than entertainment pages?"
 )
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Overview", "Network Explorer", "Degree Distribution",
     "Community Structure", "Political vs. Entertainment",
-    "Centrality Analysis", "Findings & Limitations"
+    "Centrality Analysis"
 ])
 
 #########################################################################################################
@@ -375,55 +375,105 @@ with tab4:
 
 
 #########################################################################################################
-#TAB 5 — political VS entertainment (mocked)
+#TAB 5 — political VS entertainment
 
+# helper to compute mean metric across a group of categories
+def group_avg(keys, metric_fn):
+    return round(sum(metric_fn(k) for k in keys) / len(keys), 4)
 
 with tab5:
-    st.header("Political vs. Entertainment Pages")
-
-    st.info(
-        "**This tab is a mockup for future implementation.** "
-        "Placeholders below are for our intended layout of charts and tables. "
-        "Final analysis will use computed community fragmentation and centrality scores."
-    )
+    st.header("Political vs. Entertainment")
 
     st.markdown(
-        "This section will directly compare structural properties of political categories "
-        "(Government, Public Figure, Politician) against entertainment categories "
+        "This section directly compares structural properties of **political categories** "
+        "(Government, Public Figure, Politician) against **entertainment categories** "
         "(Artist, Athletes, TV Show)."
     )
 
     st.markdown("---")
 
-    # Mockup table
     st.subheader("Group Comparison Table")
-    st.caption("Placeholder values; NOT REAL")
-    mock_table = pd.DataFrame({
-        "Metric":              ["Avg Clustering", "Avg Path Length", "Avg Density",
-                                "Avg Largest Comm %", "Avg # Communities", "Avg Betweenness (top node)"],
-        "Political (mock)":   [0.32, 4.32, 0.0024, 23.6, 268, "—"],
-        "Entertainment (mock)":[0.20, 4.97, 0.0008, 19.4, 433, "—"],
+
+    group_table = pd.DataFrame({
+        "Metric": [
+            "Avg Clustering Coefficient",
+            "Avg Path Length",
+            "Avg Network Density",
+            "Avg Largest Community %",
+            "Avg Number of Communities"
+        ],
+        "Political": [
+            group_avg(POLITICAL, lambda k: STATS[k]["clustering"]),
+            group_avg(POLITICAL, lambda k: STATS[k]["approx_path_length"]),
+            group_avg(POLITICAL, lambda k: STATS[k]["density"]),
+            group_avg(POLITICAL, lambda k: COMMUNITY[k]["largest_pct"]),
+            group_avg(POLITICAL, lambda k: COMMUNITY[k]["num_communities"])
+        ],
+        "Entertainment": [
+            group_avg(ENTERTAINMENT, lambda k: STATS[k]["clustering"]),
+            group_avg(ENTERTAINMENT, lambda k: STATS[k]["approx_path_length"]),
+            group_avg(ENTERTAINMENT, lambda k: STATS[k]["density"]),
+            group_avg(ENTERTAINMENT, lambda k: COMMUNITY[k]["largest_pct"]),
+            group_avg(ENTERTAINMENT, lambda k: COMMUNITY[k]["num_communities"])
+        ],
     }).set_index("Metric")
-    st.dataframe(mock_table, use_container_width=True)
+    st.dataframe(group_table, use_container_width=True)
 
     st.markdown("---")
-    st.subheader("Planned Visualizations")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("**Chart 1 — Largest Community % by Group**")
-        st.caption("Bar chart comparing fragmentation across all 6 categories, colored by group.")
+        st.subheader("Fragmentation by Category")
+
+        df_frag = pd.DataFrame({
+            "Category": [LABELS[k] for k in list(POLITICAL) + list(ENTERTAINMENT)],
+            "Largest Community %": [COMMUNITY[k]["largest_pct"] for k in list(POLITICAL) + list(ENTERTAINMENT)],
+            "Group": ["Political"] * 3 + ["Entertainment"] * 3,
+        }).sort_values("Largest Community %", ascending=True)
+
+        fig_frag = px.bar(
+            df_frag, x="Largest Community %", y="Category", orientation="h",
+            color="Group",
+            color_discrete_map={"Political": "#e63946", "Entertainment": "#457b9d"},
+            title="Largest Community % (Political vs. Entertainment)",
+            labels={"Largest Community %": "% of Pages in Largest Community"},
+        )
+        fig_frag.add_vline(x=50, line_dash="dash", line_color="gray", annotation_text="50%")
+        fig_frag.update_layout(height=360)
+        st.plotly_chart(fig_frag, use_container_width=True)
         
 
     with col2:
-        st.markdown("**Chart 2 — Clustering vs. Fragmentation Scatter**")
-        st.caption(
-            "Each point is a category. X = clustering coefficient, "
-            "Y = fragmentation index (100 / largest community %). "
-            "Bubble size will encode average path length. "
-            "betweenness centrality for diff colors?"
+        st.subheader("Clustering vs. Fragmentation")
+        df_scatter = pd.DataFrame({
+            "Category": [LABELS[k] for k in list(POLITICAL) + list(ENTERTAINMENT)],
+            "Clustering": [STATS[k]["clustering"] for k in list(POLITICAL) + list(ENTERTAINMENT)],
+            "Fragmentation Index": [100 / COMMUNITY[k]["largest_pct"] for k in list(POLITICAL) + list(ENTERTAINMENT)],
+            "Avg Path Length": [STATS[k]["approx_path_length"] for k in list(POLITICAL) + list(ENTERTAINMENT)],
+            "Group": ["Political"] * 3 + ["Entertainment"] * 3,
+        })
+
+        fig_sc = px.scatter(
+            df_scatter, x="Clustering", y="Fragmentation Index",
+            color="Group", text="Category", size="Avg Path Length", size_max=35,
+            color_discrete_map={"Political": "#e63946", "Entertainment": "#457b9d"},
+            title="Clustering vs. Fragmentation Index",
+            labels={
+                "Clustering": "Avg Clustering Coefficient",
+                "Fragmentation Index": "Fragmentation Index (100 / Largest Comm %)"
+            },
         )
+        fig_sc.update_traces(textposition="top center", textfont_size=10)
+        fig_sc.update_layout(height=360)
+        st.plotly_chart(fig_sc, use_container_width=True)
+    
+    st.info(
+    "Political categories show a higher average clustering (tighter local groups) but have a more fragmented community structure overall, "
+    "particularly Politician, whose largest community holds only 8.6% of pages. "
+    "Notably, TV Show is even more fragmented than Politician, but this likely reflects genre or regional clustering "
+    "rather than ideological sorting. Government differs from the other political categories by being one of the more cohesive networks overall."
+    )
 
 
 #########################################################################################################
@@ -508,28 +558,3 @@ with tab6:
         "Community":   [0, 0, 1, 2, 1],
     })
     st.dataframe(mock_hub, use_container_width=True, hide_index=True)
-
-
-#########################################################################################################
-#Tab 7 — findings & limitations
-with tab7:
-    st.header("Findings & Limitations")
-
-    st.subheader("Key Findings")
-    st.markdown("""
-[Placeholder - findings will be written here.]
-
-- RQ1: ...
-- RQ2: ...
-- RQ3: ...
-    """)
-
-    st.markdown("---")
-    st.subheader("Limitations")
-    st.markdown("""
-[Placeholder - limitations will be written here.]
-
-- ...
-- ...
-- ...
-    """)
