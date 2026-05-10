@@ -477,84 +477,305 @@ with tab5:
 
 
 #########################################################################################################
-# Tab 6 — centrality analysis (mocked)
+# Tab 6 — centrality analysis
+
+@st.cache_data(show_spinner=False)
+def compute_centralities(category):
+
+    print("CENTRALITY FUNCTION")
+
+    G = load_graph(category)
+
+    print("Graph size:", G.number_of_nodes())
+
+    # always compute degree centrality
+    degree = nx.degree_centrality(G)
+
+    ###########################################################################
+    # large graphs (artist/news sites)
+
+    if G.number_of_nodes() > 20000:
+
+        print("Large graph detected — using approximate metrics")
+
+        # approximate betweenness
+        betweenness = nx.betweenness_centrality(
+            G,
+            k=25,
+            seed=42
+        )
+
+        # sampled subgraph
+        sample_size = min(5000, G.number_of_nodes())
+
+        sample_nodes = random.sample(
+            list(G.nodes()),
+            sample_size
+        )
+
+        subG = G.subgraph(sample_nodes)
+
+        # approximate closeness
+        closeness_sub = nx.closeness_centrality(subG)
+
+        closeness = {
+            n: closeness_sub.get(n, 0)
+            for n in G.nodes()
+        }
+
+        # approximate eigenvector
+        eig_sub = nx.eigenvector_centrality(
+            subG,
+            max_iter=200
+        )
+
+        eigenvector = {
+            n: eig_sub.get(n, 0)
+            for n in G.nodes()
+        }
+
+    ###########################################################################
+    # smaller graphs
+
+    else:
+
+        betweenness = nx.betweenness_centrality(
+            G,
+            k=75,
+            seed=42
+        )
+
+        closeness = nx.closeness_centrality(G)
+
+        eigenvector = nx.eigenvector_centrality(
+            G,
+            max_iter=500
+        )
+
+    ###########################################################################
+
+    return {
+        "degree": degree,
+        "betweenness": betweenness,
+        "closeness": closeness,
+        "eigenvector": eigenvector,
+    }
+
 
 with tab6:
     st.header("Centrality Analysis")
 
-    st.info(
-        "**This tab is a mockup for future implementation.** "
-        "Placeholders below are for our intended layout of charts and tables. "
-        "Final analysis will use computed community fragmentation and centrality scores."
+    st.markdown(
+        "Centrality measures identify structurally important pages in a network. "
+        "Some pages are influential because they have many direct connections, while others are important because they bridge otherwise disconnected communities."
     )
 
     st.markdown(
-        "Centrality measures are more than just degree to characterize different kinds of structural importance. "
-        "A page can be highly connected (degree), act as a bridge between communities (betweenness), or sit close to all others on average (closeness). "
-        "This tab will let you compare those roles across all 8 categories."
+        "**Degree centrality** measures popularity, "
+        "**betweenness centrality** measures bridge importance, "
+        "**closeness centrality** measures reachability, and "
+        "**eigenvector centrality** measures influence among other influential nodes."
     )
 
     st.markdown("---")
 
-    col_ctrl1, col_ctrl2, _ = st.columns([1, 1, 2])
-    mock_cat   = col_ctrl1.selectbox("Category", [LABELS[k] for k in CATEGORY_ORDER], index=6, key="cent_cat", disabled=True)
-    mock_metric = col_ctrl2.selectbox("Centrality metric", ["Degree", "Betweenness", "Closeness", "Eigenvector"], disabled=True)
-    st.caption("Controls disabled")
+    col_ctrl1, col_ctrl2 = st.columns(2)
+
+    selected_cat = col_ctrl1.selectbox(
+        "Category",
+        [LABELS[k] for k in CATEGORY_ORDER],
+        index=6,
+        key="cent_cat"
+    )
+
+    selected_metric = col_ctrl2.selectbox(
+        "Centrality metric",
+        ["Degree", "Betweenness", "Closeness", "Eigenvector"],
+        key="cent_metric"
+    )
+
+    metric_key_map = {
+        "Degree": "degree",
+        "Betweenness": "betweenness",
+        "Closeness": "closeness",
+        "Eigenvector": "eigenvector",
+    }
+
+    metric_key = metric_key_map[selected_metric]
+    cat_key = {v: k for k, v in LABELS.items()}[selected_cat]
+
+    with st.spinner("Computing centrality metrics..."):
+        G = load_graph(cat_key)
+        cent = compute_centralities(cat_key)
+
+    ###########################################################################
+    # dataframe
+
+    df_cent = pd.DataFrame({
+        "Node": list(G.nodes()),
+        "Degree": [cent["degree"][n] for n in G.nodes()],
+        "Betweenness": [cent["betweenness"][n] for n in G.nodes()],
+        "Closeness": [cent["closeness"][n] for n in G.nodes()],
+        "Eigenvector": [cent["eigenvector"][n] for n in G.nodes()],
+        "Raw Degree": [G.degree(n) for n in G.nodes()]
+    })
+
+    ###########################################################################
+    # top nodes
+
+    top_df = (
+        df_cent.sort_values(selected_metric, ascending=False)
+        .head(10)
+        .copy()
+    )
+
+    top_df["Rank"] = [f"#{i}" for i in range(1, 11)]
 
     st.markdown("---")
 
     col1, col2 = st.columns(2)
 
+    ###########################################################################
+    # chart 1
+
     with col1:
-        st.markdown("**Chart 1 — Top 10 Nodes by Centrality (per category)**")
+        st.markdown(f"**Top 10 Nodes by {selected_metric} Centrality**")
+
         st.caption(
-            "Bar chart of the 20 highest-ranked nodes by the selected metric. "
-            "Color will encode community membership so hub-bridge roles can be read at a glance."
+            "These are the most structurally important pages according "
+            "to the selected centrality metric."
         )
-        mock_top = pd.DataFrame({
-            "Rank":        [f"#{i}" for i in range(1, 11)],
-            "Betweenness": [0.41, 0.38, 0.33, 0.29, 0.25, 0.21, 0.18, 0.15, 0.12, 0.09],
-            "Community":   [0, 1, 2, 3, 0, 1, 2, 3, 0, 1],
-        })
+
         fig_top = px.bar(
-            mock_top, x="Betweenness", y="Rank", orientation="h",
-            color="Community", color_continuous_scale="Viridis",
-            title="Top 10 Nodes by Betweenness in Government (not real)",
+            top_df.sort_values(selected_metric),
+            x=selected_metric,
+            y="Rank",
+            orientation="h",
+            color=selected_metric,
+            color_continuous_scale="Viridis",
+            hover_data=["Node", "Raw Degree"],
+            title=f"Top 10 Nodes by {selected_metric} ({selected_cat})",
         )
-        fig_top.update_layout(height=340, yaxis=dict(autorange="reversed"), coloraxis_showscale=False)
+
+        fig_top.update_layout(
+            height=380,
+            yaxis=dict(autorange="reversed"),
+            coloraxis_showscale=False,
+        )
+
         st.plotly_chart(fig_top, use_container_width=True)
 
+    ###########################################################################
+    # chart 2
+
     with col2:
-        st.markdown("**Chart 2 — Degree vs. Betweenness Scatterplot**")
+        st.markdown("**Degree vs. Betweenness Scatterplot**")
+
         st.caption(
-            "Nodes in the upper-left (high betweenness, moderate degree) are bridge nodes — "
-            "they connect otherwise separate communities without being the most-liked pages. "
-            "These are the structurally interesting hubs for RQ3."
+            "Bridge nodes appear high on betweenness even if they do not "
+            "have the largest number of direct connections."
         )
-        rng = np.random.default_rng(0)
-        mock_sc = pd.DataFrame({
-            "Degree":      rng.integers(5, 700, 80),
-            "Betweenness": rng.uniform(0, 0.45, 80),
-            "Community":   rng.integers(0, 5, 80),
-        })
+
+        scatter_sample = (
+            df_cent.sample(min(1500, len(df_cent)), random_state=42)
+        )
+
         fig_sc2 = px.scatter(
-            mock_sc, x="Degree", y="Betweenness", color="Community",
+            scatter_sample,
+            x="Raw Degree",
+            y="Betweenness",
+            color="Closeness",
+            size="Degree",
+            hover_data=["Node"],
             color_continuous_scale="Viridis",
-            title="Degree vs. Betweenness Government (not real)",
+            title=f"Degree vs. Betweenness ({selected_cat})",
             opacity=0.7,
         )
-        fig_sc2.update_layout(height=340, coloraxis_showscale=False)
+
+        fig_sc2.update_layout(
+            height=380,
+            xaxis_title="Raw Degree",
+            yaxis_title="Betweenness Centrality",
+        )
+
         st.plotly_chart(fig_sc2, use_container_width=True)
 
+    ###########################################################################
+    # summary metrics
+
     st.markdown("---")
+
+    m1, m2, m3, m4 = st.columns(4)
+
+    m1.metric(
+        "Highest Degree",
+        f"{df_cent['Raw Degree'].max():,.0f}"
+    )
+
+    m2.metric(
+        "Highest Betweenness",
+        f"{df_cent['Betweenness'].max():.4f}"
+    )
+
+    m3.metric(
+        "Highest Closeness",
+        f"{df_cent['Closeness'].max():.4f}"
+    )
+
+    m4.metric(
+        "Highest Eigenvector",
+        f"{df_cent['Eigenvector'].max():.4f}"
+    )
+
+    ###########################################################################
+    # table
+
+    st.markdown("---")
+
     st.subheader("Hub Candidates Table")
-    st.caption("Top nodes across all four metrics side-by-side, sortable by column.")
-    mock_hub = pd.DataFrame({
-        "Node":        ["Node A", "Node B", "Node C", "Node D", "Node E"],
-        "Degree":      [697, 580, 412, 388, 301],
-        "Betweenness": ["—", "—", "—", "—", "—"],
-        "Closeness":   ["—", "—", "—", "—", "—"],
-        "Eigenvector": ["—", "—", "—", "—", "—"],
-        "Community":   [0, 0, 1, 2, 1],
-    })
-    st.dataframe(mock_hub, use_container_width=True, hide_index=True)
+
+    st.caption(
+        "Top pages ranked across all four centrality measures."
+    )
+
+    hub_table = (
+        df_cent.sort_values(selected_metric, ascending=False)
+        .head(20)
+        .copy()
+    )
+
+    hub_table = hub_table[[
+        "Node",
+        "Raw Degree",
+        "Degree",
+        "Betweenness",
+        "Closeness",
+        "Eigenvector"
+    ]]
+
+    hub_table.columns = [
+        "Node",
+        "Degree Count",
+        "Degree Centrality",
+        "Betweenness",
+        "Closeness",
+        "Eigenvector"
+    ]
+
+    st.dataframe(
+        hub_table,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    ###########################################################################
+    # interpretation
+
+    st.markdown("---")
+
+    st.info(
+        "High-degree pages are not always the most important bridge nodes. "
+        "Betweenness centrality highlights pages that connect otherwise separate communities, "
+        "while eigenvector centrality rewards pages connected to other influential pages. "
+        "Together, these measures reveal different forms of structural importance in Facebook page networks."
+    )
